@@ -11,25 +11,30 @@ from pymongo import MongoClient
 import random
 import yaml
 import requests
+import pendulum
+import discord
 
 
 
 trigger = "!vellabot"
 #keep_alive()
 
-
-
-wikiLink = '\n\n^([How to use.](https://www.reddit.com/r/indiasocial/wiki/vellabot/))'
-
 query_month = [i[:3] for i in months]
 
 class vellabot:
-    def __init__(self, connection, reddit, subreddit):
+    def __init__(self, connection, reddit, webhook):
         self.CONNECTION_STRING = connection
         self.reddit = reddit
-        self.SUBREDDIT = reddit.subreddit(subreddit)
+        self.SUBREDDIT = subreddit
+        self.comment = None
         self.MClient = MongoClient(self.CONNECTION_STRING)
         self.db = MClient["2024"]
+        self.user = None
+        self.month = None
+        self.year = None
+        self.wikilink = "\n\n[^(How to use.)](https://reddit.com/r/indiasocial/w/vellabot/)"
+        self.webhook = webhook
+
 
         self.months = [
         "january", "february", "march", "april", "may", "june", "july", "august",
@@ -65,17 +70,59 @@ class vellabot:
             (0, 0): 'Lmao ded'
         }
 
-        def Entry(self, user, month, year):
-            col = self.db[month]
-            comments = 1
-            if col.count_documents({'user':user}) > 0:
-                data = col.find_one( { "user": user } )
-                col.delete_one({'user':user})
-                comments = data['comments']+1
-            col.insert_one({'user':user, 'comments':comments})
+        def logit(self, logMessage):
+            pnow = pendulum.now("Asia/Kolkata")
+            when = pnow.format('H:m:s - D MMM YY ')
+            logMessage += when
+            try:
+                embed = discord.Embed(description = f"{logMessage}",color=0x32cd32)
+                self.webhook.send(embed = embed)
+            except:
+                return
+        
+        def Entry(self):
+            col = self.db[self.month]
+            tally = 1
+            if col.count_documents({'user':self.user}) > 0:
+                data = col.find_one( { "user": self.user } )
+                col.delete_one({'user': self.user})
+                tally = data['comments']+1
+            col.insert_one({'user': self.user, 'comments':tally})
 
-        def mainFunc(self):    
-            text = 0
+        
+        def replyUser(self, message):
+            if self.comment and message:
+                message += self.wikiLink
+                try:
+                    l = self.comment.reply(body=message)
+                    l.disable_inbox_replies()
+                except Exception as e:
+                    logit(f" -- Error While commenting | Error : {e}")
+                    return
+                
+        def topInMonth(self):
+            ## Top 5 in month query
+            if len(text) > 1 and (text[1].lower() in query_month):
+                reply = 'Top 5 Vellas in '+ text[1] +': \n\n'
+                reply += 'User|Comments Count\n:-:|:-:\n'
+                for m in months:
+                    if text[1][:3].lower() == m[:3]:
+                        ignore_collection = db["ignore"]
+                        users_to_ignore = [user['_id'] for user in ignore_collection.find()]
+                        data = db[m].find({"user": {"$nin": users_to_ignore}}).sort("comments", -1).limit(5)
+                for i in data:
+                    reply += i['user'] + '|' + str(i['comments']) + '\n'
+                try:
+                    reply += wikiLink
+                    comment.reply(reply)
+                    continue
+                except Exception as e:
+                    print(e)
+                    continue
+
+        
+        
+        def run(self):
             while True:
                 try:
                     for comment in subreddit.stream.comments():
@@ -101,24 +148,7 @@ class vellabot:
                             except:
                                 continue
 
-                        ## Top 5 in month query
-                        if len(text) > 1 and (text[1].lower() in query_month):
-                            reply = 'Top 5 Vellas in '+ text[1] +': \n\n'
-                            reply += 'User|Comments Count\n:-:|:-:\n'
-                            for m in months:
-                                if text[1][:3].lower() == m[:3]:
-                                    ignore_collection = db["ignore"]
-                                    users_to_ignore = [user['_id'] for user in ignore_collection.find()]
-                                    data = db[m].find({"user": {"$nin": users_to_ignore}}).sort("comments", -1).limit(5)
-                            for i in data:
-                                reply += i['user'] + '|' + str(i['comments']) + '\n'
-                            try:
-                                reply += wikiLink
-                                comment.reply(reply)
-                                continue
-                            except Exception as e:
-                                print(e)
-                                continue
+                        
 
                         ## Top 5 in month query
                         reply = 'Month|Comments Count\n:-:|:-:\n'
