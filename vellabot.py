@@ -27,7 +27,7 @@ class vellabot(mp.Process):
         self.comment = comment
         self.MClient = MongoClient(self.CONNECTION_STRING)
         self.db = self.MClient["2024"]
-        self.wikilink = "\n\n[^(How to use.)](https://reddit.com/r/indiasocial/w/vellabot/)"
+        self.wikiLink = "\n\n[^(How to use.)](https://reddit.com/r/indiasocial/w/vellabot/)"
         self.webhook = webhook
 
 
@@ -70,22 +70,34 @@ class vellabot(mp.Process):
     def logit(self, logMessage):
         pnow = pendulum.now("Asia/Kolkata")
         when = pnow.format('H:m:s - D MMM YY ')
-        logMessage += when
+        logMessage = f"{when} {logMessage}"
         try:
             embed = discord.Embed(description = f"{logMessage}",color=0x32cd32)
             self.webhook.send(embed = embed)
         except:
             return
     
-    def Entry(self, user, month, year):
-        col = self.db[month]
-        tally = 1
-        if col.count_documents({'user': user}) > 0:
-            data = col.find_one( { "user": user } )
-            col.delete_one({'user': user})
-            tally = data['comments']+1
-        col.insert_one({'user': user, 'comments':tally})
-
+    def Entry(self):
+        try:
+            month = ''
+            post = self.reddit.submission(id=self.comment.submission).title
+            if post.find("Random Discussion Thread") != -1:
+                for m in self.months:
+                    if post.lower().find(m) != -1:
+                        user = str(self.comment.author)
+                        month = m
+                        break
+                if len(month)>1:
+                    col = self.db[month]
+                    tally = 1
+                    if col.count_documents({'user': user}) > 0:
+                        data = col.find_one( { "user": user } )
+                        col.delete_one({'user': user})
+                        tally = data['comments']+1
+                    col.insert_one({'user': user, 'comments':tally})
+        except Exception as e:
+            self.logit(f" -- Error in Entry Method: {e}")
+            return
     
     def replyUser(self, message):
         if self.comment and message:
@@ -94,7 +106,7 @@ class vellabot(mp.Process):
                 l = self.comment.reply(body=message)
                 l.disable_inbox_replies()
             except Exception as e:
-                logit(f" -- Error While commenting | Error : {e}")
+                self.logit(f" -- Error While commenting | Error : {e}")
                 return
             
     def topInMonth(self, text):
@@ -126,7 +138,7 @@ class vellabot(mp.Process):
         ## Get current month
         current_month = 0
         for i in range(0, 12):
-            if self.db[self.months[i]].count_documents() == 0:
+            if self.db[self.months[i]].count_documents({}) == 0:
                 break
             current_month = i
         ## Get current month
@@ -158,19 +170,13 @@ class vellabot(mp.Process):
             if lower <= average <= upper:
                 verdict = result
                 break
-        message += '\nAvg no of Comments/Day made by ' + user[0] + ' in ISO LNRDT in this month: ' + str(average) + '\n\n\Verdict: ' + verdict
+        message += '\nAvg no of Comments/Day made by ' + user[0] + ' in ISO LNRDT in this month: ' + str(average) + '\n\nVerdict: ' + verdict
         self.replyUser(message)
 
     
     
     def run(self):
         post = self.reddit.submission(id=self.comment.submission).title
-        year = post.split()[-1]
-        if post.find("Random Discussion Thread") != -1:
-            for month in self.months:
-                if post.lower().find(month) != -1:
-                    self.Entry(str(self.comment.author), month, year)
-                    break
         if self.comment.body.lower().find(trigger) != -1:
             text = self.comment.body
             text = text[self.comment.body.lower().find(trigger):].split(' ')
